@@ -20,9 +20,15 @@ if (!FREENOW_EMAIL || !FREENOW_PASSWORD || !GOOGLE_SHEET_ID || !SERVICE_ACCOUNT_
 async function getSheetsClient() {
   const credentials = JSON.parse(SERVICE_ACCOUNT_JSON);
 
+  // Nur Debug-Ausgabe – keine Schlüsselwerte, nur Feldnamen
+  console.log("Service-Account-Felder:", Object.keys(credentials));
+  console.log("Hat private_key-Feld:", !!credentials.private_key);
+
   // Private Key Zeilenumbrüche fixen (\n -> echte Zeilenumbrüche)
   if (credentials.private_key) {
     credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
+  } else {
+    throw new Error("In GOOGLE_SERVICE_ACCOUNT_JSON ist kein private_key enthalten.");
   }
 
   const auth = new google.auth.JWT(
@@ -31,6 +37,7 @@ async function getSheetsClient() {
     credentials.private_key,
     ["https://www.googleapis.com/auth/spreadsheets"]
   );
+
 
   await auth.authorize();
   return google.sheets({ version: "v4", auth });
