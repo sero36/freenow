@@ -1,9 +1,9 @@
 name: FreeNow Daily Import
 
 on:
-  schedule:
-    - cron: "0 3 * * *"   # Läuft täglich um 03:00 Uhr nachts
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"   # täglich um 03:00 UTC
 
 jobs:
   run-bot:
@@ -23,7 +23,7 @@ jobs:
           npm init -y
           npm install puppeteer googleapis
 
-            - name: FreeNow Bot starten
+      - name: FreeNow Bot starten
         env:
           FREENOW_EMAIL: ${{ secrets.FREENOW_EMAIL }}
           FREENOW_PASSWORD: ${{ secrets.FREENOW_PASSWORD }}
@@ -32,4 +32,3 @@ jobs:
           GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
         run: |
           node puppeteer_freenow.js
-
