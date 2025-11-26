@@ -1,4 +1,3 @@
-
 // puppeteer_freenow.js
 
 const puppeteer = require("puppeteer");
@@ -8,36 +7,36 @@ const { google } = require("googleapis");
 const FREENOW_EMAIL = process.env.FREENOW_EMAIL;
 const FREENOW_PASSWORD = process.env.FREENOW_PASSWORD;
 const GOOGLE_SHEET_ID = process.env.GOOGLE_SHEET_ID;
-const SERVICE_ACCOUNT_JSON = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_CLIENT_EMAIL;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_PRIVATE_KEY;
 
 // Sicherheits-Check: sind alle Variablen da?
-if (!FREENOW_EMAIL || !FREENOW_PASSWORD || !GOOGLE_SHEET_ID || !SERVICE_ACCOUNT_JSON) {
-  console.error("FEHLENDE ENV VARS: Bitte FREENOW_EMAIL, FREENOW_PASSWORD, GOOGLE_SHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON als Secrets setzen.");
+if (
+  !FREENOW_EMAIL ||
+  !FREENOW_PASSWORD ||
+  !GOOGLE_SHEET_ID ||
+  !GOOGLE_CLIENT_EMAIL ||
+  !GOOGLE_PRIVATE_KEY
+) {
+  console.error(
+    "FEHLENDE ENV VARS: Bitte FREENOW_EMAIL, FREENOW_PASSWORD, GOOGLE_SHEET_ID, GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY als Secrets setzen."
+  );
   process.exit(1);
 }
 
 // Google-Sheets-Client vorbereiten
 async function getSheetsClient() {
-  const credentials = JSON.parse(SERVICE_ACCOUNT_JSON);
+  // Falls der Key mit \n in einer Zeile gespeichert wurde -> echte Zeilenumbrüche draus machen
+  const fixedKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n");
 
-  // Nur Debug-Ausgabe – keine Schlüsselwerte, nur Feldnamen
-  console.log("Service-Account-Felder:", Object.keys(credentials));
-  console.log("Hat private_key-Feld:", !!credentials.private_key);
-
-  // Private Key Zeilenumbrüche fixen (\n -> echte Zeilenumbrüche)
-  if (credentials.private_key) {
-    credentials.private_key = credentials.private_key.replace(/\\n/g, "\n");
-  } else {
-    throw new Error("In GOOGLE_SERVICE_ACCOUNT_JSON ist kein private_key enthalten.");
-  }
+  console.log("Google Sheets Auth wird initialisiert…");
 
   const auth = new google.auth.JWT(
-    credentials.client_email,
+    GOOGLE_CLIENT_EMAIL,
     null,
-    credentials.private_key,
+    fixedKey,
     ["https://www.googleapis.com/auth/spreadsheets"]
   );
-
 
   await auth.authorize();
   return google.sheets({ version: "v4", auth });
