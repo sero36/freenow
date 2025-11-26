@@ -1,1 +1,33 @@
+name: FreeNow Daily Import
 
+on:
+  schedule:
+    - cron: "0 3 * * *"   # Läuft täglich um 03:00 Uhr nachts
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v4
+
+      - name: Node installieren
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Abhängigkeiten installieren
+        run: |
+          npm init -y
+          npm install puppeteer googleapis
+
+      - name: FreeNow Bot starten
+        env:
+          FREENOW_EMAIL: ${{ secrets.FREENOW_EMAIL }}
+          FREENOW_PASSWORD: ${{ secrets.FREENOW_PASSWORD }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          node puppeteer_freenow.js
