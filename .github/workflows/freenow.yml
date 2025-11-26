@@ -23,11 +23,13 @@ jobs:
           npm init -y
           npm install puppeteer googleapis
 
-      - name: FreeNow Bot starten
+            - name: FreeNow Bot starten
         env:
           FREENOW_EMAIL: ${{ secrets.FREENOW_EMAIL }}
           FREENOW_PASSWORD: ${{ secrets.FREENOW_PASSWORD }}
           GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_CLIENT_EMAIL: ${{ secrets.GOOGLE_CLIENT_EMAIL }}
+          GOOGLE_PRIVATE_KEY: ${{ secrets.GOOGLE_PRIVATE_KEY }}
         run: |
           node puppeteer_freenow.js
+
