@@ -50,7 +50,7 @@ function freenowSchreiben(csvText, datei, monatParam, von, bis) {
 
   const jetzt = new Date();
   const monat = /^\d{4}-\d{2}$/.test(String(monatParam || "")) ? String(monatParam) : Utilities.formatDate(jetzt, "Europe/Berlin", "yyyy-MM");
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = fnZielTabelle();
   const sh = ss.getSheetByName(FN_TAB) || ss.insertSheet(FN_TAB);
   const header = ["Monat", "Von", "Bis", "Abgerufen am", "Datei"].concat(kopf);
 
@@ -91,4 +91,26 @@ function csvLesen(text, t) {
   }
   if (f !== "" || row.length) { row.push(f); rows.push(row); }
   return rows.map(r => r.map(v => v.trim()));
+}
+
+/**
+ * Ziel-Tabelle für alle App-Daten: eine eigene, schlanke Tabelle "Umsatzdaten App".
+ * Wird beim ersten Lauf automatisch angelegt (in deinem Google Drive). So bleibt die
+ * große Tabelle "automatik" unberührt und es gibt keine Zeitüberschreitungen.
+ */
+function fnZielTabelle() {
+  const p = PropertiesService.getScriptProperties();
+  const oeffnen = id => { try { return SpreadsheetApp.openById(id); } catch (e) { return null; } };
+  let ss = p.getProperty("APP_TABELLE_ID") && oeffnen(p.getProperty("APP_TABELLE_ID"));
+  if (ss) return ss;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    ss = p.getProperty("APP_TABELLE_ID") && oeffnen(p.getProperty("APP_TABELLE_ID"));
+    if (ss) return ss;
+    ss = SpreadsheetApp.create("Umsatzdaten App");
+    p.setProperty("APP_TABELLE_ID", ss.getId());
+    Logger.log("Neue Tabelle 'Umsatzdaten App' angelegt: " + ss.getUrl());
+    return ss;
+  } finally { lock.releaseLock(); }
 }
