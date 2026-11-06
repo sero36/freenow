@@ -41,8 +41,9 @@ function antwort(obj) {
 function freenowSchreiben(csvText, datei) {
   const text = String(csvText).replace(/^﻿/, "");
   const ersteZeile = text.split(/\r?\n/)[0] || "";
-  const trenner = (ersteZeile.match(/;/g) || []).length > (ersteZeile.match(/,/g) || []).length ? ";" : ",";
-  const zeilen = Utilities.parseCsv(text, trenner).filter(r => r.some(c => String(c).trim() !== ""));
+  const zaehle = ch => ersteZeile.split(ch).length - 1;
+  const trenner = [";", ",", "\t"].sort((x, y) => zaehle(y) - zaehle(x))[0];
+  const zeilen = csvLesen(text, trenner).filter(r => r.some(c => String(c).trim() !== ""));
   if (zeilen.length < 1) return 0;
   const kopf = zeilen[0].map(String);
   const daten = zeilen.slice(1);
@@ -67,4 +68,23 @@ function freenowSchreiben(csvText, datei) {
   sh.getRange(1, 1, 1, header.length).setFontWeight("bold");
   sh.setFrozenRows(1);
   return neu.length;
+}
+
+/** Robuster CSV-Leser: Anführungszeichen, Zeilenumbrüche in Feldern, Trenner ; , oder Tab. */
+function csvLesen(text, t) {
+  const rows = []; let row = []; let f = ""; let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; }
+      else f += c;
+    } else if (c === '"' && f.trim() === "") { q = true; f = ""; }
+    else if (c === t) { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(f); rows.push(row); row = []; f = "";
+    } else f += c;
+  }
+  if (f !== "" || row.length) { row.push(f); rows.push(row); }
+  return rows.map(r => r.map(v => v.trim()));
 }
