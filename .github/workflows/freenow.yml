@@ -1,0 +1,33 @@
+name: FREENOW Abruf
+
+on:
+  schedule:
+    # Täglich 21:50 UTC = 22:50 Uhr (Winter) bzw. 23:50 Uhr (Sommer) in Berlin
+    - cron: "50 21 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  abruf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: CSV holen und an Google-Tabelle senden
+        run: node abruf.js
+        env:
+          FREENOW_EMAIL: ${{ secrets.FREENOW_EMAIL }}
+          FREENOW_PASSWORT: ${{ secrets.FREENOW_PASSWORT }}
+          SHEETS_WEBHOOK_URL: ${{ secrets.SHEETS_WEBHOOK_URL }}
+          SHEETS_TOKEN: ${{ secrets.SHEETS_TOKEN }}
+      - name: CSV und Fehlerbild aufbewahren (7 Tage)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freenow-ausgabe
+          path: ausgabe/
+          retention-days: 7

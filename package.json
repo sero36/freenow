@@ -1,0 +1,9 @@
+{
+  "name": "freenow-abruf",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lädt täglich die Einnahmen-CSV aus dem FREENOW-Unternehmensportal und schickt sie an die Google-Tabelle",
+  "main": "abruf.js",
+  "scripts": { "start": "node abruf.js" },
+  "dependencies": { "playwright": "1.47.2" }
+}
