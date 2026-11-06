@@ -38,6 +38,7 @@ async function anmelden(page) {
 
 async function downloadKnopf(page) {
   const kandidaten = [
+    page.getByTestId("download-csv-file"),
     page.getByRole("button", { name: /CSV|herunterladen|download/i }),
     page.locator('[title*="CSV" i], [aria-label*="CSV" i], [aria-label*="herunterladen" i], [aria-label*="download" i]'),
     page.locator('xpath=//*[normalize-space(text())="Zeitraum"]/ancestor::*[self::div or self::fieldset][2]/following::button[1]'),
@@ -88,8 +89,31 @@ async function datumsFeld(page) {
 
 /** Wählt im Kalender den Zeitraum von..bis (beide im selben Monat). */
 async function zeitraumSetzen(page, von, bis) {
+  // 1. Weg: Datum direkt in die beiden Felder tippen
+  try { await zeitraumTippen(page, von, bis); return; }
+  catch (e) { log("Eintippen klappte nicht (" + e.message + "), versuche den Kalender …"); }
+  // 2. Weg: über den Kalender klicken
   try { await zeitraumSetzenIntern(page, von, bis); }
   catch (e) { await aufbauProtokollieren(page, "bei Fehler"); throw e; }
+}
+
+async function zeitraumTippen(page, von, bis) {
+  const start = page.getByTestId("start-date-input");
+  const ende = page.getByTestId("end-date-input");
+  for (const [feld, wert] of [[start, ddmmyyyy(von)], [ende, ddmmyyyy(bis)]]) {
+    await feld.click();
+    await feld.press("Control+a");
+    await feld.pressSequentially(wert, { delay: 40 });
+    await feld.press("Enter");
+    await page.waitForTimeout(400);
+  }
+  await page.keyboard.press("Escape").catch(() => {});
+  await page.locator("body").click({ position: { x: 5, y: 5 } }).catch(() => {});
+  await page.waitForTimeout(1500);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  const s = await start.inputValue(), e = await ende.inputValue();
+  if (s !== ddmmyyyy(von) || e !== ddmmyyyy(bis)) throw new Error("Felder zeigen " + s + " > " + e);
+  log("Zeitraum eingetippt: " + s + " bis " + e);
 }
 
 async function zeitraumSetzenIntern(page, von, bis) {
@@ -102,7 +126,7 @@ async function zeitraumSetzenIntern(page, von, bis) {
     const sichtbar = (await kopf.allInnerTexts()).map(t => t.trim());
     if (sichtbar.includes(ziel)) break;
     // Pfeil nach links: erster Knopf im Kalender vor der ersten Monatsüberschrift
-    const links = kopf.first().locator("xpath=preceding::button[1]");
+    const links = kopf.first().locator("xpath=preceding::*[self::button or @role='button' or self::svg][1]");
     await links.click();
     await page.waitForTimeout(300);
   }
