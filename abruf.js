@@ -180,7 +180,7 @@ async function anTabelleSenden(datei, csv, monat, von, bis) {
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: env("SHEETS_TOKEN"), quelle: "freenow", datei, csv, monat, von, bis }),
+    body: JSON.stringify({ token: env("SHEETS_TOKEN"), quelle: "freenow", datei, csv, monat, von, bis, firma: process.env.FREENOW_FIRMA || "HeimDrive GmbH" }),
     redirect: "follow",
   });
   const text = await res.text();
