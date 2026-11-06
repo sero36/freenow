@@ -27,7 +27,7 @@ function doPost(e) {
     const soll = PropertiesService.getScriptProperties().getProperty("FREENOW_TOKEN");
     if (!soll || body.token !== soll) return antwort({ ok: false, fehler: "Token ungültig" });
     if (body.quelle !== "freenow" || !body.csv) return antwort({ ok: false, fehler: "Keine CSV" });
-    const n = freenowSchreiben(body.csv, body.datei || "");
+    const n = freenowSchreiben(body.csv, body.datei || "", body.monat, body.von, body.bis);
     return antwort({ ok: true, zeilen: n, tab: FN_TAB });
   } catch (err) {
     return antwort({ ok: false, fehler: String(err && err.message || err).slice(0, 300) });
@@ -38,7 +38,7 @@ function antwort(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
-function freenowSchreiben(csvText, datei) {
+function freenowSchreiben(csvText, datei, monatParam, von, bis) {
   const text = String(csvText).replace(/^﻿/, "");
   const ersteZeile = text.split(/\r?\n/)[0] || "";
   const zaehle = ch => ersteZeile.split(ch).length - 1;
@@ -49,21 +49,25 @@ function freenowSchreiben(csvText, datei) {
   const daten = zeilen.slice(1);
 
   const jetzt = new Date();
-  const monat = Utilities.formatDate(jetzt, "Europe/Berlin", "yyyy-MM");
+  const monat = /^\d{4}-\d{2}$/.test(String(monatParam || "")) ? String(monatParam) : Utilities.formatDate(jetzt, "Europe/Berlin", "yyyy-MM");
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sh = ss.getSheetByName(FN_TAB) || ss.insertSheet(FN_TAB);
-  const header = ["Monat", "Abgerufen am", "Datei"].concat(kopf);
+  const header = ["Monat", "Von", "Bis", "Abgerufen am", "Datei"].concat(kopf);
 
   // Vorhandene Zeilen anderer Monate behalten (nach Spaltennamen zugeordnet)
   let alt = [];
   if (sh.getLastRow() > 1) {
     const v = sh.getDataRange().getValues();
     const altKopf = v[0].map(String);
-    alt = v.slice(1).filter(r => String(r[0]) !== monat).map(r => header.map(h => { const i = altKopf.indexOf(h); return i >= 0 ? r[i] : ""; }));
+    const mk = x => x instanceof Date ? Utilities.formatDate(x, "Europe/Berlin", "yyyy-MM") : String(x);
+    alt = v.slice(1).filter(r => mk(r[0]) !== monat).map(r => header.map(h => { const i = altKopf.indexOf(h); return i >= 0 ? r[i] : ""; }));
   }
-  const neu = daten.map(r => [monat, jetzt, datei].concat(kopf.map((_, i) => r[i] !== undefined ? r[i] : "")));
+  const neu = daten.map(r => [monat, von || "", bis || "", jetzt, datei].concat(kopf.map((_, i) => r[i] !== undefined ? r[i] : "")));
   const alle = [header].concat(alt, neu);
   sh.clearContents();
+  // Monat, Von, Bis als Text speichern, sonst macht Google Datumswerte daraus
+  sh.getRange(1, 1, alle.length, 3).setNumberFormat("@");
+  alle.forEach(r => { r[0] = r[0] instanceof Date ? Utilities.formatDate(r[0], "Europe/Berlin", "yyyy-MM") : String(r[0]); });
   sh.getRange(1, 1, alle.length, header.length).setValues(alle);
   sh.getRange(1, 1, 1, header.length).setFontWeight("bold");
   sh.setFrozenRows(1);
