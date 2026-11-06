@@ -4,6 +4,11 @@
   "private": true,
   "description": "Lädt täglich die Einnahmen-CSV aus dem FREENOW-Unternehmensportal und schickt sie an die Google-Tabelle",
   "main": "abruf.js",
-  "scripts": { "start": "node abruf.js" },
-  "dependencies": { "playwright": "1.47.2" }
+  "scripts": {
+    "start": "node abruf.js"
+  },
+  "dependencies": {
+    "playwright": "1.47.2",
+    "adm-zip": "0.5.16"
+  }
 }

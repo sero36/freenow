@@ -11,6 +11,7 @@
  *   FREENOW_EMAIL, FREENOW_PASSWORT, SHEETS_WEBHOOK_URL, SHEETS_TOKEN
  */
 const { chromium } = require("playwright");
+const AdmZip = require("adm-zip");
 const fs = require("fs");
 const path = require("path");
 
@@ -148,16 +149,28 @@ async function zeitraumSetzenIntern(page, von, bis) {
 async function monatHerunterladen(page, von, bis, monatKey) {
   const knopf = await downloadKnopf(page);
   const [download] = await Promise.all([page.waitForEvent("download", { timeout: 60000 }), knopf.click()]);
-  const datei = "FREENOW Einnahmen " + monatKey + ".csv";
-  const ziel = path.join(OUT, datei);
-  await download.saveAs(ziel);
-  const csv = fs.readFileSync(ziel, "utf8");
+  const roh = path.join(OUT, "FREENOW " + monatKey + ".download");
+  await download.saveAs(roh);
+  const bytes = fs.readFileSync(roh);
+  let datei = "FREENOW Einnahmen " + monatKey + ".csv", csv;
+  if (bytes[0] === 0x50 && bytes[1] === 0x4b) {
+    // FREENOW liefert eine ZIP-Datei mit CSV(s) darin
+    const eintraege = new AdmZip(bytes).getEntries().filter(e => !e.isDirectory && /\.csv$/i.test(e.entryName));
+    log("ZIP enthält: " + eintraege.map(e => e.entryName).join(", "));
+    const wahl = eintraege.find(e => /with_VAT/i.test(e.entryName) && !/without/i.test(e.entryName))
+      || eintraege.find(e => /inkl|brutto|gross/i.test(e.entryName)) || eintraege[0];
+    if (!wahl) throw new Error("ZIP enthält keine CSV-Datei");
+    datei = wahl.entryName;
+    csv = wahl.getData().toString("utf8");
+  } else {
+    csv = bytes.toString("utf8");
+  }
+  fs.writeFileSync(path.join(OUT, datei), csv);
   log("CSV geladen: " + datei + " (" + csv.split(/\r?\n/).filter(Boolean).length + " Zeilen)");
   if (process.env.AUFBAU === "1") {
     const zeilen = csv.replace(/^\uFEFF/, "").split(/\r?\n/);
     log("KOPFZEILE: " + zeilen[0]);
     log("SPALTEN JE ZEILE: " + zeilen.map(z => (z.match(/[;,]/g) || []).length).join(" "));
-    log("ZEILENANFÄNGE: " + zeilen.slice(1).map(z => z.slice(0, 1) === '"' ? "Q" : (/^\d/.test(z) ? "N" : (z ? "T" : "_"))).join(""));
   }
   await anTabelleSenden(datei, csv, monatKey, ddmmyyyy(von), ddmmyyyy(bis));
 }
