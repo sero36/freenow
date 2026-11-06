@@ -50,10 +50,51 @@ const MONATSNAMEN = ["Januar","Februar","März","April","Mai","Juni","Juli","Aug
 const zwei = n => String(n).padStart(2, "0");
 const ddmmyyyy = d => zwei(d.getDate()) + "/" + zwei(d.getMonth() + 1) + "/" + d.getFullYear();
 
+/** Liest alle sichtbaren Datumswerte (aus Eingabefeldern und Text). */
+async function datumsWerte(page) {
+  return page.evaluate(() => {
+    const re = /\b\d{2}\/\d{2}\/\d{4}\b/g, out = [];
+    document.querySelectorAll("input").forEach(i => { (i.value || "").replace(re, m => out.push(m)); });
+    document.querySelectorAll("body *").forEach(e => { if (e.childElementCount === 0) (e.textContent || "").replace(re, m => out.push(m)); });
+    return out;
+  });
+}
+
+/** Schreibt den HTML-Aufbau rund um "Zeitraum" bzw. den Kalender ins Protokoll (zur Fehlersuche). */
+async function aufbauProtokollieren(page, wo) {
+  const html = await page.evaluate(() => {
+    const blatt = [...document.querySelectorAll("body *")].filter(e => e.childElementCount === 0);
+    const ziel = blatt.find(e => /^(Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember) \d{4}$/.test(e.textContent.trim()))
+      || blatt.find(e => e.textContent.trim() === "Zeitraum");
+    let a = ziel; for (let i = 0; i < 5 && a && a.parentElement; i++) a = a.parentElement;
+    return a ? a.outerHTML.replace(/\s+/g, " ").replace(/<path[^>]*>/g, "").slice(0, 5000) : "(nichts gefunden)";
+  }).catch(e => "(Fehler: " + e.message + ")");
+  log("AUFBAU " + wo + ": " + html);
+}
+
+/** Findet das anklickbare Datumsfeld neben "Zeitraum". */
+async function datumsFeld(page) {
+  const inputs = page.locator("input");
+  const n = await inputs.count();
+  for (let i = 0; i < n; i++) {
+    const v = (await inputs.nth(i).inputValue().catch(() => "")).trim();
+    if (/\d{2}\/\d{2}\/\d{4}/.test(v)) return inputs.nth(i);
+  }
+  const t = page.getByText(/\d{2}\/\d{2}\/\d{4}/);
+  if (await t.count()) return t.first();
+  const label = page.getByText("Zeitraum", { exact: true }).first();
+  return label.locator("xpath=following::*[1]");
+}
+
 /** Wählt im Kalender den Zeitraum von..bis (beide im selben Monat). */
 async function zeitraumSetzen(page, von, bis) {
-  const feld = page.getByText(/^\d{2}\/\d{2}\/\d{4}$/).first();
-  await feld.click();
+  try { await zeitraumSetzenIntern(page, von, bis); }
+  catch (e) { await aufbauProtokollieren(page, "bei Fehler"); throw e; }
+}
+
+async function zeitraumSetzenIntern(page, von, bis) {
+  const feld = await datumsFeld(page);
+  await feld.click({ timeout: 10000 });
   const ziel = MONATSNAMEN[von.getMonth()] + " " + von.getFullYear();
   const kopf = page.getByText(new RegExp("^(" + MONATSNAMEN.join("|") + ") \\d{4}$"));
   await kopf.first().waitFor({ timeout: 10000 });
@@ -74,7 +115,7 @@ async function zeitraumSetzen(page, von, bis) {
   await page.keyboard.press("Escape").catch(() => {});
   await page.waitForTimeout(1500);
   await page.waitForLoadState("networkidle").catch(() => {});
-  const texte = (await page.getByText(/^\d{2}\/\d{2}\/\d{4}$/).allInnerTexts()).map(t => t.trim());
+  const texte = await datumsWerte(page);
   if (!texte.includes(ddmmyyyy(von)) || !texte.includes(ddmmyyyy(bis)))
     throw new Error("Zeitraum ließ sich nicht setzen (angezeigt: " + texte.join(" > ") + ")");
   log("Zeitraum gesetzt: " + ddmmyyyy(von) + " bis " + ddmmyyyy(bis));
