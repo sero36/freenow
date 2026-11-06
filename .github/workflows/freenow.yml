@@ -10,6 +10,10 @@ on:
         description: "Wie viele Monate laden? (2 = laufender + Vormonat, 6 = letztes halbes Jahr)"
         default: "2"
         required: false
+      aufbau:
+        description: "Aufbau der CSV ins Protokoll schreiben (1 = ja)"
+        default: "0"
+        required: false
 
 jobs:
   abruf:
@@ -30,6 +34,7 @@ jobs:
           SHEETS_WEBHOOK_URL: ${{ secrets.SHEETS_WEBHOOK_URL }}
           SHEETS_TOKEN: ${{ secrets.SHEETS_TOKEN }}
           MONATE: ${{ github.event.inputs.monate || '2' }}
+          AUFBAU: ${{ github.event.inputs.aufbau || '0' }}
       - name: CSV und Fehlerbild aufbewahren (7 Tage)
         if: always()
         uses: actions/upload-artifact@v4

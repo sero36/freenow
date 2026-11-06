@@ -153,6 +153,12 @@ async function monatHerunterladen(page, von, bis, monatKey) {
   await download.saveAs(ziel);
   const csv = fs.readFileSync(ziel, "utf8");
   log("CSV geladen: " + datei + " (" + csv.split(/\r?\n/).filter(Boolean).length + " Zeilen)");
+  if (process.env.AUFBAU === "1") {
+    const zeilen = csv.replace(/^\uFEFF/, "").split(/\r?\n/);
+    log("KOPFZEILE: " + zeilen[0]);
+    log("SPALTEN JE ZEILE: " + zeilen.map(z => (z.match(/[;,]/g) || []).length).join(" "));
+    log("ZEILENANFÄNGE: " + zeilen.slice(1).map(z => z.slice(0, 1) === '"' ? "Q" : (/^\d/.test(z) ? "N" : (z ? "T" : "_"))).join(""));
+  }
   await anTabelleSenden(datei, csv, monatKey, ddmmyyyy(von), ddmmyyyy(bis));
 }
 
