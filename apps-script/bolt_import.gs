@@ -77,6 +77,36 @@ function fcbLaden_(startTs, endTs) {
   if (status.ergebnis !== 'OK') throw new Error('Bolt-Abruf: ' + status.details);
 }
 
+/** Fehlersuche: zeigt im Ausführungsprotokoll, was Bolt zum Zugang sagt (ohne Geheimnisse auszugeben). */
+function flottenBoltTest() {
+  var props = PropertiesService.getScriptProperties();
+  var id = String(props.getProperty('BOLT_CLIENT_ID') || ''), secret = String(props.getProperty('BOLT_CLIENT_SECRET') || '');
+  Logger.log('BOLT_CLIENT_ID: ' + (id ? id.length + ' Zeichen' + (id !== id.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
+  Logger.log('BOLT_CLIENT_SECRET: ' + (secret ? secret.length + ' Zeichen' + (secret !== secret.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
+  Logger.log('BOLT_COMPANY_ID: ' + (props.getProperty('BOLT_COMPANY_ID') || '(leer)'));
+  CacheService.getScriptCache().remove('fcb_token');
+  var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {method: 'post', muteHttpExceptions: true,
+    payload: {client_id: id.trim(), client_secret: secret.trim(), grant_type: 'client_credentials', scope: 'fleet-integration:api'}});
+  Logger.log('Token-Antwort HTTP ' + r.getResponseCode());
+  var j = {}; try { j = JSON.parse(r.getContentText()); } catch (e) { Logger.log('Token-Antwort nicht lesbar: ' + r.getContentText().slice(0, 200)); return; }
+  if (!j.access_token) { Logger.log('Kein Token: ' + JSON.stringify(j).slice(0, 300)); return; }
+  Logger.log('Token erhalten · token_type=' + j.token_type + ' · scope=' + j.scope + ' · expires_in=' + j.expires_in);
+  try { var teil = j.access_token.split('.')[1]; if (teil) { var pl = JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(teil + '==='.slice((teil.length + 3) % 4))).getDataAsString());
+    Logger.log('Token-Inhalt · scope=' + (pl.scope || pl.scp) + ' · aud=' + pl.aud + ' · iss=' + pl.iss + ' · exp=' + (pl.exp ? new Date(pl.exp * 1000) : '')); } } catch (e) { Logger.log('Token ist kein JWT (ok).'); }
+  ['getCompanies'].forEach(function (pfad) {
+    var rr = UrlFetchApp.fetch(FCB_API + pfad, {method: 'get', muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + j.access_token}});
+    Logger.log(pfad + ' → HTTP ' + rr.getResponseCode() + ' · ' + rr.getContentText().slice(0, 300));
+  });
+  var cid = Number(String(props.getProperty('BOLT_COMPANY_ID') || '').split(/[,;\s]+/)[0]) || null;
+  if (cid) {
+    var jetzt = Math.floor(Date.now() / 1000);
+    var r2 = UrlFetchApp.fetch(FCB_API + 'getFleetOrders', {method: 'post', muteHttpExceptions: true, contentType: 'application/json', headers: {Authorization: 'Bearer ' + j.access_token},
+      payload: JSON.stringify({company_id: cid, company_ids: [cid], start_ts: jetzt - 86400, end_ts: jetzt, limit: 5, offset: 0})});
+    var t2 = r2.getContentText(); var j2 = {}; try { j2 = JSON.parse(t2); } catch (e) {}
+    Logger.log('getFleetOrders (Firma ' + cid + ', letzte 24 h) → HTTP ' + r2.getResponseCode() + ' · code=' + j2.code + ' ' + (j2.message || '') + (j2.data ? ' · ' + ((j2.data.orders || []).length) + ' Fahrten, Firma: ' + j2.data.company_name : '') + (j2.error_hint ? ' · hint ' + j2.error_hint : ''));
+  }
+}
+
 function fcbToken_() {
   var cache = CacheService.getScriptCache();
   var t = cache.get('fcb_token');
@@ -86,7 +116,7 @@ function fcbToken_() {
   if (!id || !secret) throw new Error('Script-Eigenschaften BOLT_CLIENT_ID und BOLT_CLIENT_SECRET fehlen.');
   var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {
     method: 'post', muteHttpExceptions: true,
-    payload: {client_id: id, client_secret: secret, grant_type: 'client_credentials', scope: 'fleet-integration:api'}
+    payload: {client_id: String(id).trim(), client_secret: String(secret).trim(), grant_type: 'client_credentials', scope: 'fleet-integration:api'}
   });
   if (r.getResponseCode() !== 200) throw new Error('Bolt-Anmeldung fehlgeschlagen (HTTP ' + r.getResponseCode() + '): ' + r.getContentText().slice(0, 200));
   var j = JSON.parse(r.getContentText());
