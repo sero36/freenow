@@ -9,6 +9,7 @@
  *  2. Projekteinstellungen → Script-Eigenschaften:
  *       BOLT_CLIENT_ID      = Client-ID aus dem Bolt Fleet Portal (API-Zugang)
  *       BOLT_CLIENT_SECRET  = Client-Secret
+ *       BOLT_COMPANY_ID     = Bolt-Firmen-ID (mehrere mit Komma trennen); leer = alle freigegebenen Firmen
  *     (optional) BOLT_SHEET_ID = ID der Zieltabelle, Standard: Tabelle „automatik“
  *     Zugangsdaten NUR hier eintragen – nicht in ein Tabellenblatt und nicht in den Code.
  *  3. Funktion boltApiEinrichten() einmal ausführen (Berechtigungen bestätigen).
@@ -53,7 +54,8 @@ function boltApiLaden_(startTs, endTs) {
   var status = {zeit: new Date(), ergebnis: 'OK', details: ''};
   try {
     var token = boltToken_();
-    var firmen = boltFirmen_(token);
+    var eigene = String(props.getProperty('BOLT_COMPANY_ID') || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /^\d+$/.test(x); }).map(Number);
+    var firmen = eigene.length ? eigene : boltFirmen_(token);
     if (!firmen.length) throw new Error('Der API-Zugang hat keine Firma freigegeben.');
     var alle = [];
     firmen.forEach(function (cid) {
