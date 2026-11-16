@@ -8,8 +8,9 @@
  * EINRICHTUNG (einmalig, im Apps-Script-Projekt der Tabelle „automatik“ oder eigenständig):
  *  1. Diese Datei als neue Skriptdatei einfügen.
  *  2. Projekteinstellungen → Script-Eigenschaften:
- *       BOLT_CLIENT_ID      = Client-ID aus dem Bolt Fleet Portal (API-Zugang)
- *       BOLT_CLIENT_SECRET  = Client-Secret
+ *       BOLT_V1_CLIENT_ID     = Kunden-ID des v1-Schlüssels (Bolt Fleet Portal → API-Verbindungen)
+ *       BOLT_V1_CLIENT_SECRET = Passwort des v1-Schlüssels
+ *       (eigene Namen, damit der v2-Abruf mit BOLT_CLIENT_ID/BOLT_CLIENT_SECRET unberührt bleibt)
  *       BOLT_COMPANY_ID     = Bolt-Firmen-ID (mehrere mit Komma trennen); leer = alle freigegebenen Firmen
  *     (optional) BOLT_SHEET_ID = ID der Zieltabelle, Standard: Tabelle „automatik“
  *     Zugangsdaten NUR hier eintragen – nicht in ein Tabellenblatt und nicht in den Code.
@@ -80,9 +81,9 @@ function fcbLaden_(startTs, endTs) {
 /** Fehlersuche: zeigt im Ausführungsprotokoll, was Bolt zum Zugang sagt (ohne Geheimnisse auszugeben). */
 function flottenBoltTest() {
   var props = PropertiesService.getScriptProperties();
-  var id = String(props.getProperty('BOLT_CLIENT_ID') || ''), secret = String(props.getProperty('BOLT_CLIENT_SECRET') || '');
-  Logger.log('BOLT_CLIENT_ID: ' + (id ? id.length + ' Zeichen' + (id !== id.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
-  Logger.log('BOLT_CLIENT_SECRET: ' + (secret ? secret.length + ' Zeichen' + (secret !== secret.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
+  var id = String(props.getProperty('BOLT_V1_CLIENT_ID') || ''), secret = String(props.getProperty('BOLT_V1_CLIENT_SECRET') || '');
+  Logger.log('BOLT_V1_CLIENT_ID: ' + (id ? id.length + ' Zeichen' + (id !== id.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
+  Logger.log('BOLT_V1_CLIENT_SECRET: ' + (secret ? secret.length + ' Zeichen' + (secret !== secret.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
   Logger.log('BOLT_COMPANY_ID: ' + (props.getProperty('BOLT_COMPANY_ID') || '(leer)'));
   CacheService.getScriptCache().remove('fcb_token');
   var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {method: 'post', muteHttpExceptions: true,
@@ -112,8 +113,8 @@ function fcbToken_() {
   var t = cache.get('fcb_token');
   if (t) return t;
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('BOLT_CLIENT_ID'), secret = props.getProperty('BOLT_CLIENT_SECRET');
-  if (!id || !secret) throw new Error('Script-Eigenschaften BOLT_CLIENT_ID und BOLT_CLIENT_SECRET fehlen.');
+  var id = props.getProperty('BOLT_V1_CLIENT_ID'), secret = props.getProperty('BOLT_V1_CLIENT_SECRET');
+  if (!id || !secret) throw new Error('Script-Eigenschaften BOLT_V1_CLIENT_ID und BOLT_V1_CLIENT_SECRET fehlen.');
   var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {
     method: 'post', muteHttpExceptions: true,
     payload: {client_id: String(id).trim(), client_secret: String(secret).trim(), grant_type: 'client_credentials', scope: 'fleet-integration:api'}
