@@ -26,7 +26,8 @@ var FCB_STANDARD_SHEET = '1QOxY10TAa05cjQzmvwUXHZ2XzoY54b208Zh7xX4uqpg'; // „a
 var FCB_TAB = 'Bolt API';
 var FCB_KOPF = ['Auftrags-Nr', 'Datum', 'Fahrer', 'Fahrer-UUID', 'Status', 'Zahlungsart', 'Kategorie',
   'Bestellt', 'Abholung', 'Ende', 'km', 'Kennzeichen', 'Fahrpreis', 'Trinkgeld', 'Provision', 'Netto',
-  'Buchungsgebühr', 'Maut', 'Stornogebühr', 'Rabatt bar', 'Rabatt App', 'Firma', 'Abgerufen am'];
+  'Buchungsgebühr', 'Maut', 'Stornogebühr', 'Rabatt bar', 'Rabatt App', 'Firma', 'Abgerufen am', 'Roh-JSON'];
+// „Roh-JSON“: die komplette Antwort von Bolt zu jeder Fahrt – nichts geht verloren, auch Felder, die (noch) keine eigene Spalte haben.
 
 /** Einmal ausführen: Nachladen (Vormonat + laufender Monat) und täglichen Abruf anlegen. */
 function flottenBoltEinrichten() {
@@ -193,7 +194,8 @@ function fcbZeile_(o, jetzt) {
     fcbZahl_(p.cash_discount),
     fcbZahl_(p.in_app_discount),
     o.__firma || '',
-    jetzt
+    jetzt,
+    JSON.stringify(o).slice(0, 45000)
   ];
 }
 
