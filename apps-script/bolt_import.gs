@@ -26,8 +26,7 @@ var FCB_STANDARD_SHEET = '1QOxY10TAa05cjQzmvwUXHZ2XzoY54b208Zh7xX4uqpg'; // „a
 var FCB_TAB = 'Bolt API';
 var FCB_KOPF = ['Auftrags-Nr', 'Datum', 'Fahrer', 'Fahrer-UUID', 'Status', 'Zahlungsart', 'Kategorie',
   'Bestellt', 'Abholung', 'Ende', 'km', 'Kennzeichen', 'Fahrpreis', 'Trinkgeld', 'Provision', 'Netto',
-  'Buchungsgebühr', 'Maut', 'Stornogebühr', 'Rabatt bar', 'Rabatt App', 'Firma', 'Abgerufen am', 'Roh-JSON'];
-// „Roh-JSON“: die komplette Antwort von Bolt zu jeder Fahrt – nichts geht verloren, auch Felder, die (noch) keine eigene Spalte haben.
+  'Buchungsgebühr', 'Maut', 'Stornogebühr', 'Rabatt bar', 'Rabatt App', 'Firma', 'Abgerufen am'];
 
 /** Einmal ausführen: Nachladen (Vormonat + laufender Monat) und täglichen Abruf anlegen. */
 function flottenBoltEinrichten() {
@@ -194,8 +193,7 @@ function fcbZeile_(o, jetzt) {
     fcbZahl_(p.cash_discount),
     fcbZahl_(p.in_app_discount),
     o.__firma || '',
-    jetzt,
-    JSON.stringify(o).slice(0, 45000)
+    jetzt
   ];
 }
 
@@ -219,6 +217,7 @@ function fcbSchreiben_(sheetId, orders) {
     else neu.push(z);
   });
   if (neu.length) sh.getRange(sh.getLastRow() + 1, 1, neu.length, FCB_KOPF.length).setValues(neu);
+  try { fcbRohSpeichern_(orders, jetzt); } catch (e) { Logger.log('Rohdaten nicht gespeichert (Fahrten sind gespeichert): ' + e); }
   // Text-Spalten als Text, Beträge als Zahl – verhindert, dass Sheets Beträge in Datumsangaben verwandelt
   sh.getRange(2, 13, Math.max(1, sh.getLastRow() - 1), 9).setNumberFormat('0.00');
   return {neu: neu.length, aktualisiert: aktualisiert};
@@ -231,4 +230,28 @@ function fcbStatus_(sheetId, s) {
     sh.clear();
     sh.getRange(1, 1, 2, 3).setValues([['Zeitpunkt', 'Ergebnis', 'Details'], [s.zeit, s.ergebnis, s.details]]);
   } catch (e) { Logger.log('Status konnte nicht geschrieben werden: ' + e); }
+}
+
+
+/**
+ * Rohdaten: komplette Antwort von Bolt je Fahrt in einer EIGENEN Tabelle „Flottencockpit Bolt Rohdaten“
+ * (wird beim ersten Lauf in deinem Drive angelegt). Nichts geht verloren, die Tabelle, die die App lädt, bleibt schnell.
+ */
+function fcbRohSpeichern_(orders, jetzt) {
+  if (!orders || !orders.length) return;
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('BOLT_ROH_SHEET'), ss = null;
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) { ss = SpreadsheetApp.create('Flottencockpit Bolt Rohdaten'); props.setProperty('BOLT_ROH_SHEET', ss.getId()); }
+  var sh = ss.getSheets()[0];
+  if (sh.getLastRow() === 0) { sh.appendRow(['Auftrags-Nr', 'Fahrer', 'Abgerufen am', 'Roh-JSON']); sh.setFrozenRows(1); }
+  var n = sh.getLastRow() - 1, index = {};
+  if (n > 0) sh.getRange(2, 1, n, 1).getValues().forEach(function (r, i) { if (r[0]) index[String(r[0])] = i + 2; });
+  var neu = [], gesehen = {};
+  orders.forEach(function (o) {
+    var ref = String(o.order_reference || ''); if (!ref || gesehen[ref]) return; gesehen[ref] = true;
+    var z = [ref, o.driver_name || '', jetzt, JSON.stringify(o).slice(0, 45000)];
+    if (index[ref]) sh.getRange(index[ref], 1, 1, 4).setValues([z]); else neu.push(z);
+  });
+  if (neu.length) sh.getRange(sh.getLastRow() + 1, 1, neu.length, 4).setValues(neu);
 }
