@@ -285,3 +285,41 @@ function tfRohSpeichern(shifts, konto, jetzt) {
   });
   if (neu.length) sh.getRange(sh.getLastRow() + 1, 1, neu.length, 6).setValues(neu);
 }
+
+/**
+ * Einmalig ausführen (für Umfragen/Statistik): Gesamt-km, Besetzt-km, Umsatz und Schichten je Fahrzeug und Jahr
+ * für 2023–2025 aus TaxiFusion holen – Monat für Monat. Schreibt NUR eine kleine Zusammenfassung in den Tab
+ * „TF Jahres-km“ (keine Einzelschichten, damit die Umsatz-Tabelle klein bleibt).
+ */
+function tfJahresKmLaden() {
+  const jahre = [2023, 2024, 2025];
+  const ss = tfZielTabelle();
+  const props = PropertiesService.getScriptProperties();
+  const sum = {}; const status = [];
+  for (const konto of TF_KONTEN) {
+    const pw = props.getProperty("TF_PW_" + konto.kunde);
+    if (!pw) { status.push(konto.firma + ": Passwort fehlt"); continue; }
+    let cookie;
+    try { cookie = tfLogin(konto.kunde, pw); } catch (e) { status.push(konto.firma + ": Login fehlgeschlagen"); continue; }
+    for (const j of jahre) for (let m = 0; m < 12; m++) {
+      try {
+        const shifts = tfLadeSchichten(cookie, new Date(j, m, 1), new Date(j, m + 1, 0));
+        shifts.forEach(s => {
+          const kz = s.licenseNumber || "(ohne)"; const k = konto.firma + "|" + kz + "|" + j;
+          const o = sum[k] || (sum[k] = { firma: konto.firma, kz: kz, jahr: j, km: 0, bes: 0, umsatz: 0, n: 0 });
+          o.km += (s.totalDistance || 0) / 1000; o.bes += (s.hiredDistance || 0) / 1000;
+          o.umsatz += (s.finalTotalAmount != null ? s.finalTotalAmount : (s.totalAmount || 0)) / 100; o.n++;
+        });
+      } catch (e) { status.push(konto.firma + " " + (m + 1) + "/" + j + ": " + String(e.message || e).slice(0, 80)); }
+      Utilities.sleep(300);
+    }
+  }
+  const sh = ss.getSheetByName("TF Jahres-km") || ss.insertSheet("TF Jahres-km");
+  sh.clearContents();
+  const zeilen = Object.values(sum).sort((a, b) => (a.firma + a.kz + a.jahr).localeCompare(b.firma + b.kz + b.jahr))
+    .map(o => [o.firma, o.kz, o.jahr, Math.round(o.km), Math.round(o.bes), Math.round(o.umsatz * 100) / 100, o.n]);
+  sh.getRange(1, 1, 1, 7).setValues([["Firma", "Kennzeichen", "Jahr", "Gesamt KM", "Besetzt KM", "Umsatz (€)", "Schichten"]]).setFontWeight("bold");
+  if (zeilen.length) sh.getRange(2, 1, zeilen.length, 7).setValues(zeilen);
+  sh.getRange(1, 9).setValue("Stand " + Utilities.formatDate(new Date(), "Europe/Berlin", "dd.MM.yyyy HH:mm") + (status.length ? " · Hinweise: " + status.join("; ") : ""));
+  Logger.log(zeilen.length + " Zeilen geschrieben. " + status.join("; "));
+}
