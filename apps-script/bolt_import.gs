@@ -13,6 +13,8 @@
  *       (eigene Namen, damit der v2-Abruf mit BOLT_CLIENT_ID/BOLT_CLIENT_SECRET unberührt bleibt)
  *       BOLT_COMPANY_ID     = Bolt-Firmen-ID (mehrere mit Komma trennen); leer = alle freigegebenen Firmen
  *     (optional) BOLT_SHEET_ID = ID der Zieltabelle, Standard: Tabelle „automatik“
+ *     Weitere Bolt-Zugänge (z. B. HDP Drive Plus): BOLT_V1_CLIENT_ID_2 + BOLT_V1_CLIENT_SECRET_2 (optional BOLT_COMPANY_ID_2),
+ *     ein dritter mit _3 usw. – alle landen im selben Blatt, die Spalte „Firma“ zeigt, woher die Fahrt kommt.
  *     Zugangsdaten NUR hier eintragen – nicht in ein Tabellenblatt und nicht in den Code.
  *  3. Funktion flottenBoltEinrichten() einmal ausführen (Berechtigungen bestätigen).
  *     → lädt Vormonat + laufenden Monat nach und legt einen täglichen Abruf (ca. 6 Uhr) an.
@@ -55,21 +57,31 @@ function fcbLaden_(startTs, endTs) {
   var sheetId = props.getProperty('BOLT_SHEET_ID') || FCB_STANDARD_SHEET;
   var status = {zeit: new Date(), ergebnis: 'OK', details: ''};
   try {
-    var token = fcbToken_();
-    var eigene = String(props.getProperty('BOLT_COMPANY_ID') || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /^\d+$/.test(x); }).map(Number);
-    var firmen = eigene.length ? eigene : fcbFirmen_(token);
-    if (!firmen.length) throw new Error('Der API-Zugang hat keine Firma freigegeben.');
-    var alle = [];
-    firmen.forEach(function (cid) {
-      // Bolt erlaubt höchstens 31 Tage je Abfrage → in 30-Tage-Stücken laden
-      for (var a = startTs; a < endTs; a += 30 * 86400) {
-        var b = Math.min(endTs, a + 30 * 86400);
-        alle = alle.concat(fcbFahrten_(token, cid, a, b));
-      }
+    // Mehrere Bolt-Zugänge möglich (z. B. Taxi und HDP Drive Plus): BOLT_V1_CLIENT_ID / _2 / _3 …
+    var alle = [], zugaenge = [], fehlerZ = [];
+    fcbKonten_().forEach(function (sfx) {
+      FCB_KONTO = sfx;
+      try {
+        var token = fcbToken_();
+        var eigene = String(props.getProperty('BOLT_COMPANY_ID' + sfx) || '').split(/[,;\s]+/).map(function (x) { return x.trim(); }).filter(function (x) { return /^\d+$/.test(x); }).map(Number);
+        var firmen = eigene.length ? eigene : fcbFirmen_(token);
+        if (!firmen.length) throw new Error('Zugang' + (sfx || ' 1') + ' hat keine Firma freigegeben.');
+        firmen.forEach(function (cid) {
+          // Bolt erlaubt höchstens 31 Tage je Abfrage → in 30-Tage-Stücken laden
+          for (var a = startTs; a < endTs; a += 30 * 86400) {
+            var b = Math.min(endTs, a + 30 * 86400);
+            alle = alle.concat(fcbFahrten_(token, cid, a, b));
+          }
+        });
+        zugaenge.push({sfx: sfx, token: token, firmen: firmen});
+      } catch (ez) { fehlerZ.push('Zugang' + (sfx || ' 1') + ': ' + String(ez && ez.message || ez).slice(0, 150)); }
     });
+    FCB_KONTO = '';
+    if (!zugaenge.length) throw new Error(fehlerZ.join(' | ') || 'Kein Bolt-Zugang eingerichtet.');
     var n = fcbSchreiben_(sheetId, alle);
-    status.details = alle.length + ' Fahrten geladen, ' + n.neu + ' neu, ' + n.aktualisiert + ' aktualisiert (' + firmen.length + ' Firma/Firmen)';
-    try { var nk = fcbKontakte_(token, firmen, sheetId, alle); status.details += ' · ' + nk + ' Fahrer-Kontakte'; } catch (ek) { Logger.log('Fahrer-Kontakte nicht geladen: ' + ek); }
+    var nFirmen = zugaenge.reduce(function (s0, z) { return s0 + z.firmen.length; }, 0);
+    status.details = alle.length + ' Fahrten geladen, ' + n.neu + ' neu, ' + n.aktualisiert + ' aktualisiert (' + zugaenge.length + ' Zugang/Zugänge, ' + nFirmen + ' Firma/Firmen)' + (fehlerZ.length ? ' · ACHTUNG ' + fehlerZ.join(' | ') : '');
+    try { var nk = fcbKontakte_(zugaenge, sheetId, alle); status.details += ' · ' + nk + ' Fahrer-Kontakte'; } catch (ek) { Logger.log('Fahrer-Kontakte nicht geladen: ' + ek); }
   } catch (e) {
     status.ergebnis = 'FEHLER';
     status.details = String(e && e.message || e).slice(0, 400);
@@ -82,11 +94,12 @@ function fcbLaden_(startTs, endTs) {
 /** Fehlersuche: zeigt im Ausführungsprotokoll, was Bolt zum Zugang sagt (ohne Geheimnisse auszugeben). */
 function flottenBoltTest() {
   var props = PropertiesService.getScriptProperties();
-  var id = String(props.getProperty('BOLT_V1_CLIENT_ID') || ''), secret = String(props.getProperty('BOLT_V1_CLIENT_SECRET') || '');
+  var id = String(props.getProperty('BOLT_V1_CLIENT_ID' + FCB_KONTO) || ''), secret = String(props.getProperty('BOLT_V1_CLIENT_SECRET' + FCB_KONTO) || '');
+  Logger.log('Bolt-Zugang ' + (FCB_KONTO || '1 (ohne Endung)'));
   Logger.log('BOLT_V1_CLIENT_ID: ' + (id ? id.length + ' Zeichen' + (id !== id.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
   Logger.log('BOLT_V1_CLIENT_SECRET: ' + (secret ? secret.length + ' Zeichen' + (secret !== secret.trim() ? ' – ACHTUNG Leerzeichen am Anfang/Ende!' : '') : 'FEHLT'));
-  Logger.log('BOLT_COMPANY_ID: ' + (props.getProperty('BOLT_COMPANY_ID') || '(leer)'));
-  CacheService.getScriptCache().remove('fcb_token');
+  Logger.log('BOLT_COMPANY_ID' + FCB_KONTO + ': ' + (props.getProperty('BOLT_COMPANY_ID' + FCB_KONTO) || '(leer)'));
+  CacheService.getScriptCache().remove('fcb_token' + FCB_KONTO);
   var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {method: 'post', muteHttpExceptions: true,
     payload: {client_id: id.trim(), client_secret: secret.trim(), grant_type: 'client_credentials', scope: 'fleet-integration:api'}});
   Logger.log('Token-Antwort HTTP ' + r.getResponseCode());
@@ -99,7 +112,7 @@ function flottenBoltTest() {
     var rr = UrlFetchApp.fetch(FCB_API + pfad, {method: 'get', muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + j.access_token}});
     Logger.log(pfad + ' → HTTP ' + rr.getResponseCode() + ' · ' + rr.getContentText().slice(0, 300));
   });
-  var cid = Number(String(props.getProperty('BOLT_COMPANY_ID') || '').split(/[,;\s]+/)[0]) || null;
+  var cid = Number(String(props.getProperty('BOLT_COMPANY_ID' + FCB_KONTO) || '').split(/[,;\s]+/)[0]) || null;
   if (cid) {
     var jetzt = Math.floor(Date.now() / 1000);
     var r2 = UrlFetchApp.fetch(FCB_API + 'getFleetOrders', {method: 'post', muteHttpExceptions: true, contentType: 'application/json', headers: {Authorization: 'Bearer ' + j.access_token},
@@ -109,13 +122,22 @@ function flottenBoltTest() {
   }
 }
 
+var FCB_KONTO = ''; // '' = erster Zugang, '_2' = zweiter Zugang (z. B. HDP Drive Plus) …
+/** Welche Bolt-Zugänge eingerichtet sind: BOLT_V1_CLIENT_ID, BOLT_V1_CLIENT_ID_2, _3 … */
+function fcbKonten_() {
+  var props = PropertiesService.getScriptProperties(), out = [];
+  ['', '_2', '_3', '_4'].forEach(function (sfx) { if (props.getProperty('BOLT_V1_CLIENT_ID' + sfx) && props.getProperty('BOLT_V1_CLIENT_SECRET' + sfx)) out.push(sfx); });
+  return out.length ? out : [''];
+}
+/** Fehlersuche für den zweiten Bolt-Zugang (HDP Drive Plus): Werte mit Endung _2. */
+function flottenBoltTest2() { FCB_KONTO = '_2'; try { flottenBoltTest(); } finally { FCB_KONTO = ''; } }
 function fcbToken_() {
   var cache = CacheService.getScriptCache();
-  var t = cache.get('fcb_token');
+  var t = cache.get('fcb_token' + FCB_KONTO);
   if (t) return t;
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('BOLT_V1_CLIENT_ID'), secret = props.getProperty('BOLT_V1_CLIENT_SECRET');
-  if (!id || !secret) throw new Error('Script-Eigenschaften BOLT_V1_CLIENT_ID und BOLT_V1_CLIENT_SECRET fehlen.');
+  var id = props.getProperty('BOLT_V1_CLIENT_ID' + FCB_KONTO), secret = props.getProperty('BOLT_V1_CLIENT_SECRET' + FCB_KONTO);
+  if (!id || !secret) throw new Error('Script-Eigenschaften BOLT_V1_CLIENT_ID' + FCB_KONTO + ' und BOLT_V1_CLIENT_SECRET' + FCB_KONTO + ' fehlen.');
   var r = UrlFetchApp.fetch(FCB_TOKEN_URL, {
     method: 'post', muteHttpExceptions: true,
     payload: {client_id: String(id).trim(), client_secret: String(secret).trim(), grant_type: 'client_credentials', scope: 'fleet-integration:api'}
@@ -123,7 +145,7 @@ function fcbToken_() {
   if (r.getResponseCode() !== 200) throw new Error('Bolt-Anmeldung fehlgeschlagen (HTTP ' + r.getResponseCode() + '): ' + r.getContentText().slice(0, 200));
   var j = JSON.parse(r.getContentText());
   if (!j.access_token) throw new Error('Bolt-Anmeldung: kein Token erhalten.');
-  cache.put('fcb_token', j.access_token, Math.max(60, Math.min(540, (j.expires_in || 600) - 60))); // Token gilt 10 Minuten
+  cache.put('fcb_token' + FCB_KONTO, j.access_token, Math.max(60, Math.min(540, (j.expires_in || 600) - 60))); // Token gilt 10 Minuten
   return j.access_token;
 }
 
@@ -137,7 +159,7 @@ function fcbAufruf_(token, pfad, body) {
     var j;
     try { j = JSON.parse(r.getContentText()); } catch (e) { throw new Error(pfad + ': keine gültige Antwort (HTTP ' + http + ')'); }
     if (j.code === 0) return j.data;
-    if (j.code === 503 && versuch === 0) { CacheService.getScriptCache().remove('fcb_token'); token = fcbToken_(); continue; } // Token abgelaufen
+    if (j.code === 503 && versuch === 0) { CacheService.getScriptCache().remove('fcb_token' + FCB_KONTO); token = fcbToken_(); continue; } // Token abgelaufen
     if (j.code === 999 && versuch < 4) { Utilities.sleep(3000); continue; } // SERVER_ERROR → später nochmal
     throw new Error(pfad + ': ' + j.code + ' ' + j.message + (j.error_hint ? ' (' + j.error_hint + ')' : ''));
   }
@@ -264,11 +286,11 @@ function fcbRohSpeichern_(orders, jetzt) {
  * nicht als Fahrtenblatt gelesen wird). Die App trägt daraus NUR fehlende Angaben in die Mitarbeiterakte ein.
  */
 var FCB_KONTAKT_TAB = 'Fahrer Kontakte';
-function fcbKontakte_(token, firmen, sheetId, orders) {
+function fcbKontakte_(zugaenge, sheetId, orders) {
   var map = {}; // Schlüssel: UUID oder Name
   function setz(k, o) { if (!k) return; var m = map[k] || (map[k] = {}); Object.keys(o).forEach(function (x) { if (o[x] && !m[x]) m[x] = o[x]; }); }
   var jetzt = Math.floor(Date.now() / 1000);
-  firmen.forEach(function (cid) {
+  zugaenge.forEach(function (zg) { FCB_KONTO = zg.sfx; var token = zg.token; zg.firmen.forEach(function (cid) {
     for (var offset = 0; offset < 5000; offset += 500) {
       var d;
       try { d = fcbAufruf_(token, 'getDrivers', {company_id: cid, company_ids: [cid], start_ts: jetzt - 365 * 86400, end_ts: jetzt, limit: 500, offset: offset}); }
@@ -281,7 +303,8 @@ function fcbKontakte_(token, firmen, sheetId, orders) {
       });
       if (L.length < 500) break;
     }
-  });
+  }); });
+  FCB_KONTO = '';
   (orders || []).forEach(function (o) {
     if (!o.driver_name && !o.driver_uuid) return;
     setz(o.driver_uuid || o.driver_name, {name: o.driver_name || '', telefon: o.driver_phone || '', uuid: o.driver_uuid || '', firma: o.__firma || ''});
