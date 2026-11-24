@@ -69,6 +69,7 @@ function fcbLaden_(startTs, endTs) {
     });
     var n = fcbSchreiben_(sheetId, alle);
     status.details = alle.length + ' Fahrten geladen, ' + n.neu + ' neu, ' + n.aktualisiert + ' aktualisiert (' + firmen.length + ' Firma/Firmen)';
+    try { var nk = fcbKontakte_(token, firmen, sheetId, alle); status.details += ' · ' + nk + ' Fahrer-Kontakte'; } catch (ek) { Logger.log('Fahrer-Kontakte nicht geladen: ' + ek); }
   } catch (e) {
     status.ergebnis = 'FEHLER';
     status.details = String(e && e.message || e).slice(0, 400);
@@ -254,4 +255,44 @@ function fcbRohSpeichern_(orders, jetzt) {
     if (index[ref]) sh.getRange(index[ref], 1, 1, 4).setValues([z]); else neu.push(z);
   });
   if (neu.length) sh.getRange(sh.getLastRow() + 1, 1, neu.length, 4).setValues(neu);
+}
+
+
+/**
+ * Fahrer-Kontakte (E-Mail, Telefon) für die Personalakten: Bolt-Fahrerliste (getDrivers) und – falls dort nichts
+ * steht – die Telefonnummer aus den Fahrten. Schreibt das Blatt „Fahrer Kontakte“ (ohne „Bolt“ im Namen, damit es
+ * nicht als Fahrtenblatt gelesen wird). Die App trägt daraus NUR fehlende Angaben in die Mitarbeiterakte ein.
+ */
+var FCB_KONTAKT_TAB = 'Fahrer Kontakte';
+function fcbKontakte_(token, firmen, sheetId, orders) {
+  var map = {}; // Schlüssel: UUID oder Name
+  function setz(k, o) { if (!k) return; var m = map[k] || (map[k] = {}); Object.keys(o).forEach(function (x) { if (o[x] && !m[x]) m[x] = o[x]; }); }
+  var jetzt = Math.floor(Date.now() / 1000);
+  firmen.forEach(function (cid) {
+    for (var offset = 0; offset < 5000; offset += 500) {
+      var d;
+      try { d = fcbAufruf_(token, 'getDrivers', {company_id: cid, company_ids: [cid], start_ts: jetzt - 365 * 86400, end_ts: jetzt, limit: 500, offset: offset}); }
+      catch (e) { Logger.log('getDrivers (Firma ' + cid + '): ' + e); break; }
+      var L = (d && (d.drivers || d.list || d.items)) || [];
+      L.forEach(function (x) {
+        var name = [x.first_name, x.last_name].filter(Boolean).join(' ') || x.name || x.driver_name || '';
+        setz(x.driver_uuid || x.uuid || name, {name: name, email: x.email || '', telefon: x.phone || x.phone_number || '', uuid: x.driver_uuid || x.uuid || '',
+          status: x.state || x.status || x.portal_status || '', firma: (d && d.company_name) || String(cid)});
+      });
+      if (L.length < 500) break;
+    }
+  });
+  (orders || []).forEach(function (o) {
+    if (!o.driver_name && !o.driver_uuid) return;
+    setz(o.driver_uuid || o.driver_name, {name: o.driver_name || '', telefon: o.driver_phone || '', uuid: o.driver_uuid || '', firma: o.__firma || ''});
+  });
+  var z = Object.keys(map).map(function (k) { var m = map[k]; return [m.name || '', m.email || '', m.telefon ? "'" + m.telefon : '', m.uuid || '', m.status || '', m.firma || '', 'Bolt']; })
+    .filter(function (r) { return r[0] && (r[1] || r[2]); });
+  var ss = SpreadsheetApp.openById(sheetId);
+  var sh = ss.getSheetByName(FCB_KONTAKT_TAB) || ss.insertSheet(FCB_KONTAKT_TAB);
+  sh.clear();
+  sh.getRange(1, 1, 1, 7).setValues([['Name', 'E-Mail', 'Telefon', 'Fahrer-UUID', 'Status', 'Firma', 'Quelle']]);
+  sh.setFrozenRows(1);
+  if (z.length) sh.getRange(2, 1, z.length, 7).setValues(z);
+  return z.length;
 }
