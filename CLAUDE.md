@@ -11,6 +11,9 @@
 3. **Das neueste Dokument ist Gesetz** (Fahrzeugschein, Auszug, Eichschein, TÜV).
 4. Alles bezieht sich auf die **mobile Ansicht**; Design klein und minimalistisch.
 5. Feste Anweisung GF (26.11.2026): alle bisherigen SFK-Autos gehören zu HeimDrive.
+7. **Nie `confirm()`, `alert()` oder `prompt()` verwenden** – im claude.ai-Rahmen sind sie gesperrt
+   (confirm liefert sofort „Abbrechen“). Immer das eigene Fenster `appFrage(text, okText)` nutzen.
+   In der Simulation Browser-Dialoge sperren (`window.confirm=()=>false`), nicht automatisch bestätigen.
 6. **Firmendaten strikt trennen** (Bankverbindung, IBAN, Steuernummer, E-Mail, Anschrift, GF):
    immer aus der gewählten Firma nehmen (Firmendatensatz bzw. `fiDefaults` in der App),
    nie aus alten Formularen oder einer anderen Firma. Kontodaten nie ins Repository schreiben.
